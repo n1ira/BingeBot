@@ -23,28 +23,32 @@ def get_newest_episodes_nyaa(series_name, torrent_type, episodes_after, torrent_
             title = title_element.text
             magnet_link = torrent.find('a', href=lambda href: href and 'magnet:' in href)['href']
             
-            # Look for episode number that comes after a hyphen 
-            episode_number = re.search(r'(?<=-)\s*\d+', title)
-            # Check if episode number is the quality (e.g. 1080p)
-            if episode_number and episode_number.group().strip() == torrent_quality:
-                episode_number = None
-                print("Episode number is the quality, skipping " + title)
+            # Initialize episode_number to None
+            episode_number = None
+
             # Check if episode title is in format 'S01E01'
-            if not episode_number:
-                episode_number = re.search(r'S\d+E\d+', title)
+            episode_match = re.search(r'S\d+E(\d+)', title)
+            if episode_match:
+                episode_number = int(episode_match.group(1))
+                # print("Looking for format S01E01, found " + str(episode_number) + " in " + title)
+
+            # Look for episode number that comes after a hyphen 
+            elif not episode_match:
+                episode_match = re.search(r' - (\d+)', title)
+                episode_number = int(episode_match.group(1)) if episode_match else None
+                if episode_number == torrent_quality:
+                    episode_number = None
+                    print("Episode number is the quality, skipping " + title)
             
             # Check for torrent quality and if episode has not been downloaded before
-            print("Checking " + title)
-            print(series_name, episode_number, download_dir)
+            if episode_number and torrent_quality in title:
+                if not is_episode_downloaded(series_name, episode_number, download_dir):
+                    if episode_number > episodes_after:
+                        print("Found episode " + str(episode_number) + " of " + series_name)
 
-            if episode_number and torrent_quality in title and not is_episode_downloaded(series_name, int(episode_number.group().strip()), download_dir):
-                episode_number = int(episode_number.group().strip())
-                if episode_number > episodes_after:
-                    print("Found episode " + str(episode_number) + " of " + series_name)
-
-                    # Keep only the highest-seeded version of each episode
-                    if episode_number not in episodes:
-                        episodes[episode_number] = magnet_link
+                        # Keep only the highest-seeded version of each episode
+                        if episode_number not in episodes:
+                            episodes[episode_number] = magnet_link
 
     # Sort by episode number and convert to list
     episodes = sorted(episodes.items(), key=lambda x: x[0], reverse=True)
@@ -54,7 +58,6 @@ def get_newest_episodes_nyaa(series_name, torrent_type, episodes_after, torrent_
 
 def load_downloaded_episodes(download_dir):
     try:
-        print("Loading downloaded episodes")
         with open(download_dir + "downloaded_episodes.json", "r") as file:
             return json.load(file)
     except FileNotFoundError:
@@ -62,7 +65,6 @@ def load_downloaded_episodes(download_dir):
 
 def is_episode_downloaded(series_name, episode_number, download_dir):
     downloaded_episodes = load_downloaded_episodes(download_dir)
-    print("Downloaded episodes " + str(downloaded_episodes))
 
     if series_name in downloaded_episodes:
         # Return True if the episode has been downloaded before

@@ -7,8 +7,13 @@ import os
 import json
 
 
-def get_newest_episodes_nyaa(series_name, torrent_type, episodes_after, torrent_quality, download_dir):
-    url = "https://nyaa.si/?f=0&c=1_2&q=" + quote(series_name) + "&s=seeders&o=desc"
+def get_newest_episodes_nyaa(series_name, torrent_type, episodes_after, torrent_quality, download_dir, episode_number=None):
+    # Add episode_number to the url if it is specified
+    if episode_number is not None:
+        url = "https://nyaa.si/?f=0&c=0_0&q=" + quote(series_name + ' ' + str(episode_number)) + "&s=seeders&o=desc"
+    else:
+        url = "https://nyaa.si/?f=0&c=1_2&q=" + quote(series_name) + "&s=seeders&o=desc"
+
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -56,6 +61,87 @@ def get_newest_episodes_nyaa(series_name, torrent_type, episodes_after, torrent_
     return episodes
 
 
+################### SEEKERS #####################
+
+def seek_missing_episode(series_name, torrent_type, torrent_quality, download_dir):
+    # Extract the base series name and starting episode
+    base_series_name, starting_episode = split_series_name(series_name)
+    starting_episode = int(starting_episode) + 1
+
+    downloaded_episodes = load_downloaded_episodes(download_dir)
+
+    if base_series_name not in downloaded_episodes:
+        print(base_series_name + " not found in downloaded_episodes")
+        return
+
+    max_episode_number = max(downloaded_episodes[base_series_name])
+    
+    # Adjust the range of episodes considering the starting episode
+    complete_episodes = list(range(starting_episode, max_episode_number + 1))
+
+    missing_episodes = list(set(complete_episodes) - set(downloaded_episodes[base_series_name]))
+
+    if not missing_episodes:
+        print("No missing episodes found for " + base_series_name)
+        return
+
+    print("Missing episodes for " + base_series_name + " are: " + str(missing_episodes))
+
+    for missing_episode in missing_episodes:
+        print("Looking for episode " + str(missing_episode) + " of " + base_series_name)
+
+        newest_episodes = get_newest_episodes_nyaa(base_series_name, torrent_type, missing_episode, torrent_quality, download_dir, missing_episode)
+
+        if newest_episodes:
+            print("Found episode " + str(missing_episode) + " of " + base_series_name)
+
+            series_dir = os.path.join(download_dir, base_series_name)
+            create_dir_if_not_exists(series_dir)
+
+            magnet_links = [episode[1] for episode in newest_episodes]
+            add_torrent_to_qbittorrent(magnet_links, series_dir)
+
+            for episode in newest_episodes:
+                mark_episode_as_downloaded(base_series_name, episode[0], download_dir)
+        else:
+            print("Episode " + str(missing_episode) + " of " + base_series_name + " not found on nyaa.si")
+
+def seek_newest_episode(series_name, torrent_type, torrent_quality, download_dir):
+    # Extract the base series name and starting episode
+    base_series_name, starting_episode = split_series_name(series_name)
+    starting_episode = int(starting_episode) + 1
+
+    downloaded_episodes = load_downloaded_episodes(download_dir)
+
+    if base_series_name not in downloaded_episodes:
+        print(base_series_name + " not found in downloaded_episodes")
+        return
+
+    max_episode_number = max(downloaded_episodes[base_series_name])
+
+    # Seek for the next episode considering the starting episode
+    next_episode = max(max_episode_number + 1, starting_episode)
+
+    print("Seeking episode " + str(next_episode) + " of " + base_series_name)
+
+    newest_episodes = get_newest_episodes_nyaa(base_series_name, torrent_type, next_episode, torrent_quality, download_dir, next_episode)
+
+    if newest_episodes:
+        print("Found episode " + str(next_episode) + " of " + base_series_name)
+
+        series_dir = os.path.join(download_dir, base_series_name)
+        create_dir_if_not_exists(series_dir)
+
+        magnet_links = [episode[1] for episode in newest_episodes]
+        add_torrent_to_qbittorrent(magnet_links, series_dir)
+
+        for episode in newest_episodes:
+            mark_episode_as_downloaded(base_series_name, episode[0], download_dir)
+    else:
+        print("Episode " + str(next_episode) + " of " + base_series_name + " not found on nyaa.si")
+
+
+################### DOWNLOADS HANDLING #####################
 def load_downloaded_episodes(download_dir):
     try:
         with open(download_dir + "downloaded_episodes.json", "r") as file:
@@ -101,15 +187,20 @@ def create_dir_if_not_exists(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
+def split_series_name(series_name):
+    """
+    Splits the series_name into base_series_name and starting_episode
+    """
+    if ":" in series_name:
+        base_series_name, starting_episode = series_name.split(":")
+        return base_series_name, int(starting_episode)
+    else:
+        return series_name, 0
+
 import threading
 download_lock = threading.Lock()
 def check_and_download(series_name_and_episodes_after, torrent_type, torrent_quality, download_dir, torrent_providers_whitelist):
-    if ":" in series_name_and_episodes_after:
-        series_name, episodes_after = series_name_and_episodes_after.split(":")
-        episodes_after = int(episodes_after.strip())
-    else:
-        series_name = series_name_and_episodes_after
-        episodes_after = 0
+    series_name, episodes_after = split_series_name(series_name_and_episodes_after)
 
     series_name = series_name.strip()
 

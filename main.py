@@ -5,7 +5,7 @@ from watchdog.events import FileSystemEventHandler
 import schedule
 import json
 
-from tools import check_and_download
+from tools import check_and_download, seek_missing_episode, seek_newest_episode
 
 
 scheduled_jobs = set()  # Track scheduled jobs
@@ -25,6 +25,10 @@ def load_or_create_settings():
             "torrent_type": ["success", "danger", "default"],
             "series_list_file": "series_list.txt",
             "poll_interval_seconds": 5,
+            "will_seek_missing_episodes": False,
+            "seek_missing_episodes_interval_seconds": 10,
+            "will_seek_newest_episode": True,
+            "seek_newest_episode_interval_seconds": 10,
             "torrent_quality": "1080",
             "torrent_providers_whitelist": ["nyaa.si"],
             "torrent_client": {
@@ -44,11 +48,19 @@ settings = load_or_create_settings()
 
 # Now you can access the settings in your code, e.g.
 download_dir = settings["download_dir"]
-torrent_type = settings["torrent_type"]
 series_list_file = settings["series_list_file"]
-poll_interval_seconds = settings["poll_interval_seconds"]
+
+torrent_type = settings["torrent_type"]
 torrent_quality = settings["torrent_quality"]
 torrent_providers_whitelist = settings["torrent_providers_whitelist"]
+
+poll_interval_seconds = settings["poll_interval_seconds"]
+
+will_seek_missing_episodes = settings["will_seek_missing_episodes"]
+seek_missing_episodes_interval_seconds = settings["seek_missing_episodes_interval_seconds"]
+
+will_seek_newest_episode = settings["will_seek_newest_episode"]
+seek_newest_episode_interval_seconds = settings["seek_newest_episode_interval_seconds"]
 
 
 class MyHandler(FileSystemEventHandler):
@@ -71,7 +83,6 @@ class MyHandler(FileSystemEventHandler):
             if list(job.tags)[0] not in series_list:
                 schedule.cancel_job(job)
 
-
         # Schedule the script to run every 5 seconds
         for series_name in series_list:
             if series_name not in scheduled_jobs:  # Check if the job is already scheduled
@@ -79,6 +90,14 @@ class MyHandler(FileSystemEventHandler):
                 scheduled_job = schedule.every(poll_interval_seconds).seconds.do(check_and_download, series_name, torrent_type, torrent_quality, download_dir, torrent_providers_whitelist)
                 scheduled_job.tag(series_name)  # Tag the job with the series name
                 scheduled_jobs.add(series_name)
+                
+                if will_seek_missing_episodes:
+                    # Schedule seeking for missing episodes
+                    schedule.every(seek_missing_episodes_interval_seconds).seconds.do(seek_missing_episode, series_name, torrent_type, torrent_quality, download_dir)
+
+                if will_seek_newest_episode:
+                    # Schedule seeking for newest episode
+                    schedule.every(seek_newest_episode_interval_seconds).seconds.do(seek_newest_episode, series_name, torrent_type, torrent_quality, download_dir)
 
 
 if __name__ == "__main__":

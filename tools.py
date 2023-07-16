@@ -7,7 +7,7 @@ import os
 import json
 
 
-def get_newest_episodes_nyaa(series_name, torrent_type, episodes_after, torrent_quality, anime_dir):
+def get_newest_episodes_nyaa(series_name, torrent_type, episodes_after, torrent_quality, download_dir):
     url = "https://nyaa.si/?f=0&c=1_2&q=" + quote(series_name) + "&s=seeders&o=desc"
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -33,7 +33,7 @@ def get_newest_episodes_nyaa(series_name, torrent_type, episodes_after, torrent_
                 episode_number = re.search(r'(?<=S)\d+(?=E)', title)
             
             # Check for torrent quality and if episode has not been downloaded before
-            if episode_number and torrent_quality in title and not is_episode_downloaded(series_name, int(episode_number.group().strip()), anime_dir):
+            if episode_number and torrent_quality in title and not is_episode_downloaded(series_name, int(episode_number.group().strip()), download_dir):
                 episode_number = int(episode_number.group().strip())
                 if episode_number > episodes_after:
                     print("Found episode " + str(episode_number) + " of " + series_name)
@@ -48,15 +48,15 @@ def get_newest_episodes_nyaa(series_name, torrent_type, episodes_after, torrent_
     return episodes
 
 
-def load_downloaded_episodes(anime_dir):
+def load_downloaded_episodes(download_dir):
     try:
-        with open(anime_dir + "downloaded_episodes.json", "r") as file:
+        with open(download_dir + "downloaded_episodes.json", "r") as file:
             return json.load(file)
     except FileNotFoundError:
         return {}
 
-def is_episode_downloaded(series_name, episode_number, anime_dir):
-    downloaded_episodes = load_downloaded_episodes(anime_dir)
+def is_episode_downloaded(series_name, episode_number, download_dir):
+    downloaded_episodes = load_downloaded_episodes(download_dir)
 
     if series_name in downloaded_episodes:
         # Return True if the episode has been downloaded before
@@ -64,10 +64,10 @@ def is_episode_downloaded(series_name, episode_number, anime_dir):
     else:
         return False
 
-def mark_episode_as_downloaded(series_name, episode_number, anime_dir):
+def mark_episode_as_downloaded(series_name, episode_number, download_dir):
     print("Marking episode " + str(episode_number) + " of " + series_name + " as downloaded")
 
-    downloaded_episodes = load_downloaded_episodes(anime_dir)
+    downloaded_episodes = load_downloaded_episodes(download_dir)
 
     # If series not in dictionary, add an empty list
     if series_name not in downloaded_episodes:
@@ -77,7 +77,7 @@ def mark_episode_as_downloaded(series_name, episode_number, anime_dir):
     downloaded_episodes[series_name].append(episode_number)
 
     # Write the dictionary back to the file
-    with open(anime_dir + "downloaded_episodes.json", "w") as file:
+    with open(download_dir + "downloaded_episodes.json", "w") as file:
         json.dump(downloaded_episodes, file, sort_keys=True, indent=4)
 
 
@@ -95,7 +95,7 @@ def create_dir_if_not_exists(path):
 
 import threading
 download_lock = threading.Lock()
-def check_and_download(series_name_and_episodes_after, torrent_type, torrent_quality, anime_dir, torrent_providers_whitelist):
+def check_and_download(series_name_and_episodes_after, torrent_type, torrent_quality, download_dir, torrent_providers_whitelist):
     if ":" in series_name_and_episodes_after:
         series_name, episodes_after = series_name_and_episodes_after.split(":")
         episodes_after = int(episodes_after.strip())
@@ -109,16 +109,16 @@ def check_and_download(series_name_and_episodes_after, torrent_type, torrent_qua
         print("Checking for new episodes of " + series_name)
 
         if "nyaa.si" in torrent_providers_whitelist:
-            newest_episodes = get_newest_episodes_nyaa(series_name, torrent_type, episodes_after, torrent_quality, anime_dir)
+            newest_episodes = get_newest_episodes_nyaa(series_name, torrent_type, episodes_after, torrent_quality, download_dir)
         else:
             print("Nyaa.si not in whitelist, skipping " + series_name)
 
         if newest_episodes:
-            series_dir = os.path.join(anime_dir, series_name)
+            series_dir = os.path.join(download_dir, series_name)
             create_dir_if_not_exists(series_dir)
 
             magnet_links = [episode[1] for episode in newest_episodes]
             add_torrent_to_qbittorrent(magnet_links, series_dir)
 
             for episode in newest_episodes:
-                mark_episode_as_downloaded(series_name, episode[0], anime_dir)
+                mark_episode_as_downloaded(series_name, episode[0], download_dir)

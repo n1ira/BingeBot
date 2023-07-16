@@ -21,9 +21,9 @@ def load_or_create_settings():
             settings = json.load(file)
     except FileNotFoundError:
         default_settings = {
-            "anime_dir": "C:\\Users\\Username\\Downloads\\",
+            "download_dir": "C:\\Users\\Username\\Downloads\\",
             "torrent_type": ["success", "danger", "default"],
-            "anime_list_file": "anime_list.txt",
+            "series_list_file": "series_list.txt",
             "poll_interval_seconds": 5,
             "torrent_quality": "1080",
             "torrent_providers_whitelist": ["nyaa.si"],
@@ -43,9 +43,9 @@ def load_or_create_settings():
 settings = load_or_create_settings()
 
 # Now you can access the settings in your code, e.g.
-anime_dir = settings["anime_dir"]
+download_dir = settings["download_dir"]
 torrent_type = settings["torrent_type"]
-anime_list_file = settings["anime_list_file"]
+series_list_file = settings["series_list_file"]
 poll_interval_seconds = settings["poll_interval_seconds"]
 torrent_quality = settings["torrent_quality"]
 torrent_providers_whitelist = settings["torrent_providers_whitelist"]
@@ -54,16 +54,16 @@ torrent_providers_whitelist = settings["torrent_providers_whitelist"]
 class MyHandler(FileSystemEventHandler):
     def __init__(self):
         super().__init__()
-        print("Watching for changes to " + anime_list_file)
+        print("Watching for changes to " + series_list_file)
 
     def on_modified(self, event):
         # Check if the modified file is anime_list.txt
-        if os.path.realpath(event.src_path) == os.path.realpath(anime_list_file):
+        if os.path.realpath(event.src_path) == os.path.realpath(series_list_file):
             self.schedule_anime_list()
 
     def schedule_anime_list(self):
         # Load the new list of series
-        with open(anime_list_file, 'r') as file:
+        with open(series_list_file, 'r') as file:
             series_list = file.read().splitlines()
 
         # Clear previous tasks
@@ -76,7 +76,7 @@ class MyHandler(FileSystemEventHandler):
         for series_name in series_list:
             if series_name not in scheduled_jobs:  # Check if the job is already scheduled
                 print("Scheduling " + series_name)
-                scheduled_job = schedule.every(poll_interval_seconds).seconds.do(check_and_download, series_name, torrent_type, torrent_quality, anime_dir, torrent_providers_whitelist)
+                scheduled_job = schedule.every(poll_interval_seconds).seconds.do(check_and_download, series_name, torrent_type, torrent_quality, download_dir, torrent_providers_whitelist)
                 scheduled_job.tag(series_name)  # Tag the job with the series name
                 scheduled_jobs.add(series_name)
 
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     event_handler.schedule_anime_list()
 
     observer = PollingObserver()  # Use polling instead of default observer to reduce resource usage
-    observer.schedule(event_handler, path=anime_dir, recursive=False)
+    observer.schedule(event_handler, path=download_dir, recursive=False)
 
     # Start watching for file changes
     observer.start()

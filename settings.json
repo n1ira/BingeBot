@@ -1,0 +1,19 @@
+{
+    "anime_dir": "C:\\Users\\username\\Downloads\\",
+    "torrent_type": [
+        "success",
+        "danger",
+        "default"
+    ],
+    "anime_list_file": "anime_list.txt",
+    "poll_interval_seconds": 5,
+    "torrent_quality": "1080",
+    "torrent_providers_whitelist": [
+        "nyaa.si"
+    ],
+    "torrent_client": {
+        "url": "http://localhost:8080/",
+        "username": "admin",
+        "password": "password"
+    }
+}

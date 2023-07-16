@@ -57,11 +57,11 @@ class MyHandler(FileSystemEventHandler):
         print("Watching for changes to " + series_list_file)
 
     def on_modified(self, event):
-        # Check if the modified file is anime_list.txt
+        # Check if the modified file is series_list.txt
         if os.path.realpath(event.src_path) == os.path.realpath(series_list_file):
-            self.schedule_anime_list()
+            self.schedule_series_list()
 
-    def schedule_anime_list(self):
+    def schedule_series_list(self):
         # Load the new list of series
         with open(series_list_file, 'r') as file:
             series_list = file.read().splitlines()
@@ -85,8 +85,8 @@ if __name__ == "__main__":
     # Set up file event handler
     event_handler = MyHandler()
 
-    # Initialize and schedule the anime list
-    event_handler.schedule_anime_list()
+    # Initialize and schedule the series list
+    event_handler.schedule_series_list()
 
     observer = PollingObserver()  # Use polling instead of default observer to reduce resource usage
     observer.schedule(event_handler, path=download_dir, recursive=False)

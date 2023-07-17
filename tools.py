@@ -98,21 +98,22 @@ def extract_episode_number(title, torrent_quality):
     episode_match_2 = re.search(r' - (\d+)', title)
 
     is_bd = re.search(r'\[BD\]', title, re.IGNORECASE)
-    is_torrent_quality = re.search(torrent_quality, title, re.IGNORECASE)
     is_movie = re.search(r'movie', title, re.IGNORECASE)
 
-    if is_movie or (is_bd and is_torrent_quality):
-        logger.debug(f"{title} is a movie or BD")
+    if is_movie or is_bd:
         return 1
-    elif is_torrent_quality:
-        logger.debug(f"{title} is a {torrent_quality} episode")
-        episode_number = 1
     elif episode_match_1:
-        episode_number = int(episode_match_1.group(1))
+        temp_episode_number = int(episode_match_1.group(1))
+        if temp_episode_number == int(torrent_quality):
+            episode_number = 1
+        else:
+            episode_number = temp_episode_number
     elif episode_match_2:
-        episode_number = int(episode_match_2.group(1))
-    elif is_movie or is_bd or is_torrent_quality:
-        episode_number = 1
+        temp_episode_number = int(episode_match_2.group(1))
+        if temp_episode_number == int(torrent_quality):
+            episode_number = 1
+        else:
+            episode_number = temp_episode_number
 
     return episode_number
 
@@ -130,7 +131,7 @@ def get_newest_episodes_nyaa(series_name, torrent_type, episodes_after, torrent_
         if episode_data is not None:
             episode_number, title, magnet_link = episode_data
             if episode_number and torrent_quality in title and not is_episode_downloaded(series_name, episode_number, download_dir):
-                if episode_number > episodes_after:
+                if episode_number > episodes_after and episode_number is not torrent_quality:
                     logger.info(f"Found episode {episode_number} of {series_name}")
                     # Keep only the highest-seeded version of each episode
                     if episode_number not in episodes:

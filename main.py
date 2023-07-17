@@ -47,7 +47,13 @@ def schedule_series_list(settings, scheduled_jobs):
     """
     Helper function to schedule series list.
     """
-    # Load the new list of series
+    # Load the new list of series if it exists
+    if not os.path.exists(settings["series_list_file"]):
+        # If not, create it and write the sample text
+        with open(settings["series_list_file"], 'w') as file:
+            file.write("Serial Experiments Lain\n")
+
+    # Load the list of series
     with open(settings["series_list_file"], 'r') as file:
         series_list = file.read().splitlines()
 

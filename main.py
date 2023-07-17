@@ -1,81 +1,99 @@
 import time
 import os
-from watchdog.observers.polling import PollingObserver
-from watchdog.events import FileSystemEventHandler
 import schedule
 import json
+from watchdog.observers.polling import PollingObserver
+from watchdog.events import FileSystemEventHandler
 
 from tools import check_and_download, seek_missing_episode, seek_newest_episode
 
+# default settings
+DEFAULT_SETTINGS = {
+    "download_dir": "C:\\Users\\Username\\Downloads\\",
+    "torrent_type": ["success", "danger", "default"],
+    "series_list_file": "series_list.txt",
+    "poll_interval_seconds": 5,
+    "will_seek_missing_episodes": False,
+    "seek_missing_episodes_interval_seconds": 10,
+    "will_seek_newest_episode": True,
+    "seek_newest_episode_interval_seconds": 10,
+    "torrent_quality": "1080",
+    "torrent_providers_whitelist": ["nyaa.si"],
+    "torrent_client": {
+        "url": "http://localhost:8080/",
+        "username": "admin",
+        "password": "password"
+    }
+}
 
-scheduled_jobs = set()  # Track scheduled jobs
-
-
-################### SETTINGS #####################
-# Path to the settings file
-settings_file = "settings.json"
+# constant for settings file
+SETTINGS_FILE = "settings.json"
 
 def load_or_create_settings():
+    """
+    Helper function to load or create the settings.
+    """
     try:
-        with open(settings_file, "r") as file:
+        with open(SETTINGS_FILE, "r") as file:
             settings = json.load(file)
     except FileNotFoundError:
-        default_settings = {
-            "download_dir": "C:\\Users\\Username\\Downloads\\",
-            "torrent_type": ["success", "danger", "default"],
-            "series_list_file": "series_list.txt",
-            "poll_interval_seconds": 5,
-            "will_seek_missing_episodes": False,
-            "seek_missing_episodes_interval_seconds": 10,
-            "will_seek_newest_episode": True,
-            "seek_newest_episode_interval_seconds": 10,
-            "torrent_quality": "1080",
-            "torrent_providers_whitelist": ["nyaa.si"],
-            "torrent_client": {
-                "url": "http://localhost:8080/",
-                "username": "admin",
-                "password": "password"
-            }
-        }
-        with open(settings_file, "w") as file:
-            json.dump(default_settings, file, indent=4)
-        settings = default_settings
+        with open(SETTINGS_FILE, "w") as file:
+            json.dump(DEFAULT_SETTINGS, file, indent=4)
+        settings = DEFAULT_SETTINGS
 
     return settings
 
-# Load settings
-settings = load_or_create_settings()
+def schedule_series_list(settings, scheduled_jobs):
+    """
+    Helper function to schedule series list.
+    """
+    # Load the new list of series
+    with open(settings["series_list_file"], 'r') as file:
+        series_list = file.read().splitlines()
 
-# Now you can access the settings in your code, e.g.
-download_dir = settings["download_dir"]
-series_list_file = settings["series_list_file"]
+    # Clear previous tasks
+    for job in list(schedule.jobs):
+        if list(job.tags)[0] not in series_list:
+            schedule.cancel_job(job)
 
-torrent_type = settings["torrent_type"]
-torrent_quality = settings["torrent_quality"]
-torrent_providers_whitelist = settings["torrent_providers_whitelist"]
+    # Schedule the script to run every 5 seconds
+    for series_name in series_list:
+        if series_name not in scheduled_jobs:  # Check if the job is already scheduled
+            scheduled_job = schedule.every(settings["poll_interval_seconds"]).seconds.do(
+                check_and_download, series_name, settings["torrent_type"], settings["torrent_quality"], 
+                settings["download_dir"], settings["torrent_providers_whitelist"])
+            scheduled_job.tag(series_name)  # Tag the job with the series name
+            scheduled_jobs.add(series_name)
+            
+            if settings["will_seek_missing_episodes"]:
+                # Schedule seeking for missing episodes
+                schedule.every(settings["seek_missing_episodes_interval_seconds"]).seconds.do(
+                    seek_missing_episode, series_name, settings["torrent_type"], 
+                    settings["torrent_quality"], settings["download_dir"])
 
-poll_interval_seconds = settings["poll_interval_seconds"]
-
-will_seek_missing_episodes = settings["will_seek_missing_episodes"]
-seek_missing_episodes_interval_seconds = settings["seek_missing_episodes_interval_seconds"]
-
-will_seek_newest_episode = settings["will_seek_newest_episode"]
-seek_newest_episode_interval_seconds = settings["seek_newest_episode_interval_seconds"]
-
+            if settings["will_seek_newest_episode"]:
+                # Schedule seeking for newest episode
+                schedule.every(settings["seek_newest_episode_interval_seconds"]).seconds.do(
+                    seek_newest_episode, series_name, settings["torrent_type"], 
+                    settings["torrent_quality"], settings["download_dir"])
 
 class MyHandler(FileSystemEventHandler):
-    def __init__(self):
+    def __init__(self, settings, scheduled_jobs):
         super().__init__()
-        print("Watching for changes to " + series_list_file)
+        self.settings = settings
+        self.scheduled_jobs = scheduled_jobs
 
     def on_modified(self, event):
         # Check if the modified file is series_list.txt
-        if os.path.realpath(event.src_path) == os.path.realpath(series_list_file):
-            self.schedule_series_list()
+        if os.path.realpath(event.src_path) == os.path.realpath(self.settings["series_list_file"]):
+            schedule_series_list(self.settings, self.scheduled_jobs)
 
-    def schedule_series_list(self):
+    def schedule_series_list(settings, scheduled_jobs):
+        """
+        Schedules the series list.
+        """
         # Load the new list of series
-        with open(series_list_file, 'r') as file:
+        with open(settings["series_list_file"], 'r') as file:
             series_list = file.read().splitlines()
 
         # Clear previous tasks
@@ -83,32 +101,40 @@ class MyHandler(FileSystemEventHandler):
             if list(job.tags)[0] not in series_list:
                 schedule.cancel_job(job)
 
-        # Schedule the script to run every 5 seconds
+        # Schedule the script to run at the specified intervals
         for series_name in series_list:
             if series_name not in scheduled_jobs:  # Check if the job is already scheduled
-                print("Scheduling " + series_name)
-                scheduled_job = schedule.every(poll_interval_seconds).seconds.do(check_and_download, series_name, torrent_type, torrent_quality, download_dir, torrent_providers_whitelist)
+                scheduled_job = schedule.every(settings["poll_interval_seconds"]).seconds.do(
+                    check_and_download, series_name, settings["torrent_type"], settings["torrent_quality"], 
+                    settings["download_dir"], settings["torrent_providers_whitelist"])
                 scheduled_job.tag(series_name)  # Tag the job with the series name
                 scheduled_jobs.add(series_name)
                 
-                if will_seek_missing_episodes:
+                if settings["will_seek_missing_episodes"]:
                     # Schedule seeking for missing episodes
-                    schedule.every(seek_missing_episodes_interval_seconds).seconds.do(seek_missing_episode, series_name, torrent_type, torrent_quality, download_dir)
+                    schedule.every(settings["seek_missing_episodes_interval_seconds"]).seconds.do(
+                        seek_missing_episode, series_name, settings["torrent_type"], 
+                        settings["torrent_quality"], settings["download_dir"])
 
-                if will_seek_newest_episode:
+                if settings["will_seek_newest_episode"]:
                     # Schedule seeking for newest episode
-                    schedule.every(seek_newest_episode_interval_seconds).seconds.do(seek_newest_episode, series_name, torrent_type, torrent_quality, download_dir)
+                    schedule.every(settings["seek_newest_episode_interval_seconds"]).seconds.do(
+                        seek_newest_episode, series_name, settings["torrent_type"], 
+                        settings["torrent_quality"], settings["download_dir"])
 
 
 if __name__ == "__main__":
+    settings = load_or_create_settings()
+    scheduled_jobs = set()  # Track scheduled jobs
+
     # Set up file event handler
-    event_handler = MyHandler()
+    event_handler = MyHandler(settings, scheduled_jobs)
 
     # Initialize and schedule the series list
-    event_handler.schedule_series_list()
+    schedule_series_list(settings, scheduled_jobs)
 
     observer = PollingObserver()  # Use polling instead of default observer to reduce resource usage
-    observer.schedule(event_handler, path=download_dir, recursive=False)
+    observer.schedule(event_handler, path=settings["download_dir"], recursive=False)
 
     # Start watching for file changes
     observer.start()

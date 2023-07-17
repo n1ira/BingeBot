@@ -85,22 +85,34 @@ def get_episode_data(torrent, torrent_quality):
     else:
         return None
 
+
 def extract_episode_number(title, torrent_quality):
     """
     Helper function to extract the episode number from a title.
     """
     episode_number = None
+
     # Check if episode title is in format 'S01E01'
-    episode_match = re.search(r'S\d+E(\d+)', title)
-    if episode_match:
-        episode_number = int(episode_match.group(1))
-    else:
-        # Look for episode number that comes after a hyphen
-        episode_match = re.search(r' - (\d+)', title)
-        episode_number = int(episode_match.group(1)) if episode_match else None
-        if episode_number == torrent_quality:
-            episode_number = None
-            logger.warning(f"Episode number is the quality, skipping {title}")
+    episode_match_1 = re.search(r'S\d+E(\d+)', title)
+    # Look for episode number that comes after a hyphen
+    episode_match_2 = re.search(r' - (\d+)', title)
+
+    is_bd = re.search(r'\[BD\]', title, re.IGNORECASE)
+    is_torrent_quality = re.search(torrent_quality, title, re.IGNORECASE)
+    is_movie = re.search(r'movie', title, re.IGNORECASE)
+
+    if is_movie or (is_bd and is_torrent_quality):
+        logger.debug(f"{title} is a movie or BD")
+        return 1
+    elif is_torrent_quality:
+        logger.debug(f"{title} is a {torrent_quality} episode")
+        episode_number = 1
+    elif episode_match_1:
+        episode_number = int(episode_match_1.group(1))
+    elif episode_match_2:
+        episode_number = int(episode_match_2.group(1))
+    elif is_movie or is_bd or is_torrent_quality:
+        episode_number = 1
 
     return episode_number
 
@@ -143,7 +155,7 @@ def get_missing_episodes(base_series_name, starting_episode, downloaded_episodes
     """
     Helper function to get missing episodes.
     """
-    max_episode_number = max(downloaded_episodes[base_series_name])
+    max_episode_number = max(downloaded_episodes[base_series_name]) if downloaded_episodes[base_series_name] else 0
 
     # Adjust the range of episodes considering the starting episode
     complete_episodes = list(range(starting_episode, max_episode_number + 1))

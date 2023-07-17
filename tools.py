@@ -1,3 +1,4 @@
+# import necessary modules
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -12,19 +13,23 @@ import logging
 # Create a logger
 logger = colorlog.getLogger()
 logger.setLevel(logging.DEBUG)
+
+# Create a console handler
 handler = colorlog.StreamHandler()
+
+# Set a format for the handler
 handler.setFormatter(colorlog.ColoredFormatter(
     "%(log_color)s%(levelname)-8s%(reset)s %(message)s"))
+
+# Add the handler to the logger
 logger.addHandler(handler)
+
 
 
 # constant for torrent site URL
 NYAA_URL = "https://nyaa.si/?f=0&c=0_0&q="
 NYAA_URL_NO_EPISODE = "https://nyaa.si/?f=0&c=1_2&q="
 
-# constant for qBittorrent login
-QB_USERNAME = 'admin'
-QB_PASSWORD = 'grant123'
 
 # lock for downloads
 download_lock = threading.Lock()
@@ -53,8 +58,8 @@ def get_torrents(url, torrent_type):
         response = requests.get(url, timeout=30)
         response.raise_for_status()
     except (requests.Timeout, ConnectionError):
-        logger.error(f"Error occurred while fetching data from {url}")
         spinner.stop()
+        logger.error(f"Error occurred while fetching data from {url}")
         return []
     
     spinner.stop()
@@ -162,6 +167,11 @@ def seek_missing_episode(series_name, torrent_type, torrent_quality, download_di
 
     if base_series_name not in downloaded_episodes:
         logger.error(f"{base_series_name} not found in downloaded_episodes")
+        # create empty list for series and update downloaded_episodes.json
+        downloaded_episodes[base_series_name] = []
+        with open(os.path.join(download_dir, "downloaded_episodes.json"), "w") as file:
+            json.dump(downloaded_episodes, file, sort_keys=True, indent=4)
+        logger.info(f"Created entry in downloaded_episodes for {base_series_name}")
         return
 
     missing_episodes = get_missing_episodes(base_series_name, starting_episode, downloaded_episodes)
@@ -186,7 +196,7 @@ def seek_missing_episode(series_name, torrent_type, torrent_quality, download_di
                 for episode in newest_episodes:
                     mark_episode_as_downloaded(base_series_name, episode[0], download_dir)
             else:
-                logger.error(f"Episode {missing_episode} of {base_series_name} not found on nyaa.si")
+                logger.debug(f"Episode {missing_episode} of {base_series_name} not found on nyaa.si")
 
 
 def seek_newest_episode(series_name, torrent_type, torrent_quality, download_dir):
@@ -201,9 +211,15 @@ def seek_newest_episode(series_name, torrent_type, torrent_quality, download_dir
 
     if base_series_name not in downloaded_episodes:
         logger.error(f"{base_series_name} not found in downloaded_episodes")
+        # create empty list for series and update downloaded_episodes.json
+        downloaded_episodes[base_series_name] = []
+        with open(os.path.join(download_dir, "downloaded_episodes.json"), "w") as file:
+            json.dump(downloaded_episodes, file, sort_keys=True, indent=4)
+        logger.info(f"Created entry in downloaded_episodes for {base_series_name}")
         return
 
-    max_episode_number = max(downloaded_episodes[base_series_name])
+    # Get the max episode number, skip if no episodes have been downloaded
+    max_episode_number = max(downloaded_episodes[base_series_name]) if downloaded_episodes[base_series_name] else 0
 
     # Seek for the next episode considering the starting episode
     next_episode = max(max_episode_number + 1, starting_episode)
@@ -224,7 +240,7 @@ def seek_newest_episode(series_name, torrent_type, torrent_quality, download_dir
         for episode in newest_episodes:
             mark_episode_as_downloaded(base_series_name, episode[0], download_dir)
     else:
-        logger.error(f"Episode {next_episode} of {base_series_name} not found on nyaa.si")
+        logger.debug(f"Episode {next_episode} of {base_series_name} not found on nyaa.si")
 
 
 def check_and_download(series_name_and_episodes_after, torrent_type, torrent_quality, download_dir, torrent_providers_whitelist):
@@ -274,7 +290,12 @@ def add_torrent_to_qbittorrent(magnet_links, savepath):
     print("Adding torrents to qBittorrent")
 
     qb = Client('http://localhost:8080/')
-    qb.login('admin', 'grant123')
+    # getting the credentials from the settings file
+    with open("settings.json", "r") as file:
+        settings = json.load(file)
+    qb_username = settings["torrent_client"]["username"]
+    qb_password = settings["torrent_client"]["password"]
+    qb.login(qb_username, qb_password)
     qb.download_from_link(magnet_links, savepath=savepath)
 
 
